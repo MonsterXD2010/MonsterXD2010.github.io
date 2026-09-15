@@ -1,26 +1,247 @@
-<html>
 
+<!DOCTYPE html>
+<html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>MonsterProjects</title>
-    <link rel="icon" href="img/icon.png" type="image/png">
+    <title>Detector de QR</title>
+
+    <!-- Librería para detectar QR -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1e1e1e;
+            color: white;
+            text-align: center;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .contenedor {
+            max-width: 800px;
+            margin: auto;
+            background: #2b2b2b;
+            padding: 25px;
+            border-radius: 15px;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        input {
+            margin: 20px;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            opacity: 0.8;
+        }
+
+        canvas {
+            max-width: 100%;
+            margin-top: 20px;
+            border-radius: 10px;
+        }
+
+        #resultado {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            background: #181818;
+            text-align: left;
+            word-break: break-word;
+        }
+
+        #datos {
+            white-space: pre-wrap;
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .verde {
+            color: #00ff88;
+        }
+
+        .rojo {
+            color: #ff5555;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>Bienvenido a MonsterProjects</h1>
 
-    <p>MonsterProjects es una web donde subire todos mis
-        projectos desde programas de c++ asta gias de como funciona
-        un cpu o una computadora sinple. 
-    </p>
+<div class="contenedor">
 
-    <ol>
-        <li><a href="Logica.html">Logica computacional</a></li>
-        <li><a href="MicroPC.html">Mini PC</a></li>
-        
-    </ol>
+    <h1>Detector de códigos QR</h1>
 
-    
+    <p>Selecciona una imagen que contenga un código QR.</p>
+
+    <input
+        type="file"
+        id="archivo"
+        accept="image/*"
+    >
+
+    <br>
+
+    <button onclick="detectarQR()">
+        Detectar QR
+    </button>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="resultado">
+        <h2>Resultado</h2>
+
+        <p id="estado">
+            Esperando una imagen...
+        </p>
+
+        <div id="datos"></div>
+    </div>
+
+</div>
+
+
+<script>
+
+let imagen = null;
+
+
+// Cuando se selecciona una imagen
+document.getElementById("archivo").addEventListener("change", function(event) {
+
+    const archivo = event.target.files[0];
+
+    if (!archivo) {
+        return;
+    }
+
+    imagen = new Image();
+
+    imagen.onload = function() {
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = imagen.width;
+        canvas.height = imagen.height;
+
+        ctx.drawImage(imagen, 0, 0);
+
+        document.getElementById("estado").innerHTML =
+            "Imagen cargada. Pulsa <b>Detectar QR</b>.";
+
+        document.getElementById("datos").innerHTML = "";
+    };
+
+    imagen.src = URL.createObjectURL(archivo);
+
+});
+
+
+// Detectar QR
+function detectarQR() {
+
+    if (!imagen) {
+
+        document.getElementById("estado").innerHTML =
+            '<span class="rojo">Primero selecciona una imagen.</span>';
+
+        return;
+    }
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const imagenData = ctx.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    const qr = jsQR(
+        imagenData.data,
+        imagenData.width,
+        imagenData.height
+    );
+
+
+    if (qr) {
+
+        document.getElementById("estado").innerHTML =
+            '<span class="verde">✓ QR encontrado</span>';
+
+        document.getElementById("datos").textContent =
+            qr.data;
+
+        // Dibujar el cuadrado alrededor del QR
+        dibujarQR(qr.location);
+
+    } else {
+
+        document.getElementById("estado").innerHTML =
+            '<span class="rojo">✗ No se encontró ningún QR</span>';
+
+        document.getElementById("datos").textContent =
+            "";
+    }
+
+}
+
+
+// Dibujar un cuadrado alrededor del QR
+function dibujarQR(posicion) {
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        posicion.topLeftCorner.x,
+        posicion.topLeftCorner.y
+    );
+
+    ctx.lineTo(
+        posicion.topRightCorner.x,
+        posicion.topRightCorner.y
+    );
+
+    ctx.lineTo(
+        posicion.bottomRightCorner.x,
+        posicion.bottomRightCorner.y
+    );
+
+    ctx.lineTo(
+        posicion.bottomLeftCorner.x,
+        posicion.bottomLeftCorner.y
+    );
+
+    ctx.closePath();
+
+    ctx.lineWidth = 5;
+
+    ctx.strokeStyle = "lime";
+
+    ctx.stroke();
+}
+
+</script>
+
 </body>
-
 </html>
+
