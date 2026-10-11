@@ -1,526 +1,148 @@
-```html
+
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detector QR ESP32</title>
 
-    <title>ESP32-CAM - Lector QR</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
-    <!-- Lector de códigos QR -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-
-    <style>
-        body {
-            background: #111;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-        }
-
-        h1 {
-            margin-bottom: 10px;
-        }
-
-        #estado {
-            font-size: 20px;
-            margin: 15px;
-        }
-
-        #ip {
-            color: #aaa;
-            margin-bottom: 15px;
-        }
-
-        #foto {
-            width: 640px;
-            max-width: 95%;
-            border: 2px solid #555;
-            background: black;
-        }
-
-        #resultado {
-            margin: 20px auto;
-            padding: 15px;
-            max-width: 600px;
-            background: #222;
-            border-radius: 8px;
-            word-wrap: break-word;
-        }
-
-        #qrCanvas {
-            display: none;
-        }
-    </style>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #202124;
+    color: white;
+    max-width: 800px;
+    margin: 30px auto;
+    padding: 15px;
+}
+section {
+    background: #303134;
+    padding: 18px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#estado { color: #8ab4f8; }
+</style>
 </head>
-
 <body>
 
-    <h1>ESP32-CAM</h1>
+<h1>Detector QR ESP32-CAM</h1>
 
-    <div id="ip">
-        ESP32: buscando...
-    </div>
+<section>
+    <h2>Estado</h2>
+    <p id="estado">Esperando imágenes...</p>
+    <canvas id="canvas" hidden></canvas>
+</section>
 
-    <div id="estado">
-        Conectando...
-    </div>
-
-    <img id="foto" alt="Imagen del ESP32">
-
-    <div id="resultado">
-        QR detectado: <b>ninguno</b>
-    </div>
-
-    <canvas id="qrCanvas"></canvas>
-
+<section>
+    <h2>Contenido de datos.txt</h2>
+    <pre id="datos">Cargando...</pre>
+    <button onclick="cargarDatos()">Actualizar TXT</button>
+</section>
 
 <script>
-
-// ============================================================
-// CONFIGURACIÓN
-// ============================================================
-
-// El servidor está en la misma máquina que esta página.
-// No necesitamos escribir su IP manualmente.
-const SERVIDOR = "";
-
-// Tiempo entre fotografías
-const INTERVALO = 1000;
-
-
-// ============================================================
-// ELEMENTOS
-// ============================================================
-
-const foto = document.getElementById("foto");
-const canvas = document.getElementById("qrCanvas");
-const ctx = canvas.getContext("2d");
-
-const estado = document.getElementById("estado");
-const resultado = document.getElementById("resultado");
-const ipTexto = document.getElementById("ip");
-
-
-// ============================================================
-// VARIABLES
-// ============================================================
-
-let ipESP32 = null;
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", {
+    willReadFrequently: true
+});
 
 let procesando = false;
 
-let ultimoQR = "";
-
-
-// ============================================================
-// DESCUBRIR IP DEL ESP32
-// ============================================================
-
-async function descubrirESP32() {
-
+async function cargarDatos() {
     try {
-
-        estado.textContent =
-            "Buscando ESP32-CAM...";
-
-        const respuesta = await fetch(
-            SERVIDOR + "/esp32?t=" + Date.now()
-        );
-
-        if (!respuesta.ok) {
-            throw new Error("Servidor no respondió");
-        }
-
-        const datos = await respuesta.json();
-
-
-        // ----------------------------------------------------
-        // Comprobar que recibimos una IP
-        // ----------------------------------------------------
-
-        if (!datos.ip) {
-
-            throw new Error(
-                "El servidor todavía no conoce al ESP32"
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // Guardar IP
-        // ----------------------------------------------------
-
-        ipESP32 = datos.ip;
-
-
-        ipTexto.textContent =
-            "ESP32: " + ipESP32;
-
-
-        estado.textContent =
-            "ESP32 conectado";
-
-
-        console.log(
-            "IP del ESP32:",
-            ipESP32
-        );
-
-
-        // ----------------------------------------------------
-        // Empezar a recibir fotografías
-        // ----------------------------------------------------
-
-        obtenerImagen();
-
-
-    } catch (error) {
-
-        console.log(error);
-
-        ipESP32 = null;
-
-        ipTexto.textContent =
-            "ESP32: no encontrado";
-
-        estado.textContent =
-            "Esperando conexión del ESP32...";
-
-
-        // Intentar nuevamente
-        setTimeout(
-            descubrirESP32,
-            1000
-        );
+        const r = await fetch("/datos.txt?t=" + Date.now());
+        document.getElementById("datos").textContent =
+            await r.text();
+    } catch (e) {
+        document.getElementById("datos").textContent =
+            "No se pudo cargar el archivo.";
     }
 }
 
-
-// ============================================================
-// OBTENER IMAGEN
-// ============================================================
-
-async function obtenerImagen() {
-
-    if (!ipESP32)
-        return;
-
-
-    if (procesando)
-        return;
-
-
+async function analizar() {
+    if (procesando) return;
     procesando = true;
 
-
     try {
+        const r = await fetch("/siguiente");
+        const tarea = await r.json();
 
-        estado.textContent =
-            "Recibiendo imagen...";
+        if (tarea.id) {
+            document.getElementById("estado").textContent =
+                "Analizando imagen #" + tarea.id;
 
+            const img = new Image();
 
-        // ----------------------------------------------------
-        // URL de la fotografía
-        // ----------------------------------------------------
+            img.onload = async () => {
+                try {
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    ctx.drawImage(img, 0, 0);
 
-        const url =
-            "http://" +
-            ipESP32 +
-            "/X1.jpg?t=" +
-            Date.now();
+                    const frame = ctx.getImageData(
+                        0, 0, canvas.width, canvas.height
+                    );
 
+                    const qr = jsQR(
+                        frame.data,
+                        frame.width,
+                        frame.height
+                    );
 
-        const respuesta =
-            await fetch(url);
+                    const contenido = qr ? qr.data : "";
 
+                    await fetch("/resultado", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            id: tarea.id,
+                            encontrado: !!qr,
+                            datos: contenido
+                        })
+                    });
 
-        if (!respuesta.ok) {
+                    document.getElementById("estado").textContent =
+                        qr ? "QR detectado correctamente" :
+                             "No se encontró ningún QR";
 
-            throw new Error(
-                "No se pudo recibir X1.jpg"
-            );
-        }
-
-
-        const blob =
-            await respuesta.blob();
-
-
-        // ----------------------------------------------------
-        // Crear imagen
-        // ----------------------------------------------------
-
-        const imagen =
-            new Image();
-
-
-        imagen.onload = function () {
-
-            // Mostrar imagen
-            foto.src =
-                imagen.src;
-
-
-            // ------------------------------------------------
-            // Canvas
-            // ------------------------------------------------
-
-            canvas.width =
-                imagen.width;
-
-            canvas.height =
-                imagen.height;
-
-
-            ctx.drawImage(
-                imagen,
-                0,
-                0,
-                imagen.width,
-                imagen.height
-            );
-
-
-            // ------------------------------------------------
-            // Obtener píxeles
-            // ------------------------------------------------
-
-            const datos =
-                ctx.getImageData(
-                    0,
-                    0,
-                    canvas.width,
-                    canvas.height
-                );
-
-
-            // ------------------------------------------------
-            // Buscar QR
-            // ------------------------------------------------
-
-            const qr =
-                jsQR(
-                    datos.data,
-                    datos.width,
-                    datos.height
-                );
-
-
-            if (qr) {
-
-                const texto =
-                    qr.data;
-
-
-                estado.textContent =
-                    "¡QR DETECTADO!";
-
-
-                resultado.innerHTML =
-                    "QR detectado:<br><br><b>" +
-                    escaparHTML(texto) +
-                    "</b>";
-
-
-                // ------------------------------------------------
-                // Enviar solamente si es un QR nuevo
-                // ------------------------------------------------
-
-                if (texto !== ultimoQR) {
-
-                    ultimoQR = texto;
-
-                    enviarOK(texto);
+                    await cargarDatos();
+                } catch (e) {
+                    document.getElementById("estado").textContent =
+                        "Error al analizar la imagen";
+                } finally {
+                    procesando = false;
                 }
+            };
 
+            img.onerror = async () => {
+                document.getElementById("estado").textContent =
+                    "No se pudo abrir la imagen";
+                procesando = false;
+            };
 
-            } else {
-
-                estado.textContent =
-                    "Buscando QR...";
-
-
-                resultado.innerHTML =
-                    "QR detectado: <b>ninguno</b>";
-
-
-                // Permitir que el mismo QR vuelva
-                // a detectarse después de desaparecer.
-                ultimoQR = "";
-            }
-
-
+            img.src = "data:image/jpeg;base64," + tarea.imagen;
+        } else {
             procesando = false;
-
-
-            // ------------------------------------------------
-            // Siguiente fotografía
-            // ------------------------------------------------
-
-            setTimeout(
-                obtenerImagen,
-                INTERVALO
-            );
-        };
-
-
-        imagen.onerror = function () {
-
-            procesando = false;
-
-            estado.textContent =
-                "Error leyendo imagen";
-
-            setTimeout(
-                obtenerImagen,
-                INTERVALO
-            );
-        };
-
-
-        imagen.src =
-            URL.createObjectURL(blob);
-
-
-    } catch (error) {
-
-        console.log(error);
-
-        procesando = false;
-
-        estado.textContent =
-            "No se pudo conectar con el ESP32";
-
-
-        // ----------------------------------------------------
-        // Puede haber cambiado la IP o desconectarse
-        // ----------------------------------------------------
-
-        setTimeout(
-            descubrirESP32,
-            1000
-        );
-    }
-}
-
-
-// ============================================================
-// ENVIAR OK AL ESP32
-// ============================================================
-
-async function enviarOK(textoQR) {
-
-    try {
-
-        estado.textContent =
-            "QR encontrado → enviando OK";
-
-
-        const url =
-            "http://" +
-            ipESP32 +
-            "/qr_ok?data=" +
-            encodeURIComponent(textoQR);
-
-
-        const respuesta =
-            await fetch(url);
-
-
-        if (!respuesta.ok) {
-
-            throw new Error(
-                "El ESP32 rechazó la señal"
-            );
         }
-
-
-        console.log(
-            "OK enviado al ESP32"
-        );
-
-
-        estado.textContent =
-            "QR aceptado → OK enviado";
-
-
-    } catch (error) {
-
-        console.log(error);
-
-        estado.textContent =
-            "QR detectado, pero falló el OK";
+    } catch (e) {
+        document.getElementById("estado").textContent =
+            "Esperando conexión con el servidor...";
+        procesando = false;
     }
 }
 
-
-// ============================================================
-// PROTEGER TEXTO DEL QR
-// ============================================================
-
-function escaparHTML(texto) {
-
-    return texto
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-
-// ============================================================
-// INICIAR
-// ============================================================
-
-descubrirESP32();
-
+cargarDatos();
+setInterval(analizar, 500);
+setInterval(cargarDatos, 3000);
 </script>
 
 </body>
 </html>
-```
-
-### Lo que falta en la laptop
-
-Este HTML espera que el servidor responda a:
-
-```text
-GET /esp32
-```
-
-con algo como:
-
-```json
-{
-    "ip": "192.168.1.8"
-}
-```
-
-Así que el siguiente paso es hacer el **`server.py` de la laptop**.
-
-El ESP32 se registraría automáticamente:
-
-```text
-ESP32
-  │
-  │ POST /register
-  │
-  │ "192.168.1.8"
-  ▼
-server.py
-  │
-  │ guarda IP
-  ▼
-index.html
-  │
-  ├── http://192.168.1.8/X1.jpg
-  │
-  └── http://192.168.1.8/qr_ok
-```
-
-De esa manera **no tienes que tocar el HTML aunque el router le asigne otra IP al ESP32**.
